@@ -8,26 +8,24 @@ Built around a simple principle: **agent reasoning is separated from agent actio
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                          AI Host (single Docker host)                         │
-│                                                                               │
-│ ┌────────────┬───────────────────────────────┬─────────────────────────────┐ │
-│ │ INFERENCE  │  ollama (11434)               │ LLMs + embeddings (CPU)     │ │
-│ │            │  tei-reranker (8082)          │ bge-reranker-v2-m3 (CPU)    │ │
-│ │            │  docling (5001)               │ PDF / doc parsing           │ │
-│ ├────────────┼───────────────────────────────┼─────────────────────────────┤ │
-│ │ STORAGE    │  qdrant (6333 / 6334)         │ Vector DB                   │ │
-│ ├────────────┼───────────────────────────────┼─────────────────────────────┤ │
-│ │ FRONTEND   │  open-webui (3000)            │ ChatGPT-like UI for Ollama  │ │
-│ ├────────────┼───────────────────────────────┼─────────────────────────────┤ │
-│ │ WORKFLOWS  │  n8n (5678)                   │ Workflow automation         │ │
-│ │            │  n8n-db                       │ Postgres for n8n            │ │
-│ ├────────────┼───────────────────────────────┼─────────────────────────────┤ │
-│ │ OBSERV.    │  langfuse (3001)              │ LLM / RAG traces (v2)       │ │
-│ │            │  langfuse-db                  │ Postgres for langfuse       │ │
-│ ├────────────┼───────────────────────────────┼─────────────────────────────┤ │
-│ │ EVALS      │  rag-eval (on-demand)         │ RAGAS quality checks        │ │
-│ └────────────┴───────────────────────────────┴─────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────────────┘
+│                         AI Host (single Docker host)                         │
+├────────────┬───────────────────────────────┬─────────────────────────────────┤
+│ INFERENCE  │ ollama (11434)                │ LLMs + embeddings (CPU)         │
+│            │ tei-reranker (8082)           │ bge-reranker-v2-m3 (CPU)        │
+│            │ docling (5001)                │ PDF / doc parsing               │
+├────────────┼───────────────────────────────┼─────────────────────────────────┤
+│ STORAGE    │ qdrant (6333 / 6334)          │ Vector DB                       │
+├────────────┼───────────────────────────────┼─────────────────────────────────┤
+│ FRONTEND   │ open-webui (3000)             │ ChatGPT-like UI for Ollama      │
+├────────────┼───────────────────────────────┼─────────────────────────────────┤
+│ WORKFLOWS  │ n8n (5678)                    │ Workflow automation             │
+│            │ n8n-db                        │ Postgres for n8n                │
+├────────────┼───────────────────────────────┼─────────────────────────────────┤
+│ OBSERV.    │ langfuse (3001)               │ LLM / RAG traces (v2)           │
+│            │ langfuse-db                   │ Postgres for langfuse           │
+├────────────┼───────────────────────────────┼─────────────────────────────────┤
+│ EVALS      │ rag-eval (on-demand)          │ RAGAS quality checks            │
+└────────────┴───────────────────────────────┴─────────────────────────────────┘
 ```
 
 All HTTP ports bind to the host's internal interface. Public exposure (if any) goes through a separate reverse-proxy host — never directly from the inference host.
