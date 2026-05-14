@@ -1,0 +1,210 @@
+services:
+  n8n-db:
+    image: postgres:16.8-alpine
+    container_name: n8n-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${N8N_DB_USER}
+      POSTGRES_PASSWORD: ${N8N_DB_PASSWORD}
+      POSTGRES_DB: ${N8N_DB_NAME}
+    volumes:
+      - ./postgresql/n8n:/var/lib/postgresql/data
+      - ./postgresql/n8n-parent:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d ${N8N_DB_NAME} -U ${N8N_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:2.15.1
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: n8n-db
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      GENERIC_TIMEZONE: ${TZ:-UTC}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./n8n:/home/node/.n8n
+    depends_on:
+      n8n-db:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:0.20.5
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      TZ: ${TZ:-UTC}
+      OLLAMA_KEEP_ALIVE: 24h
+      OLLAMA_MAX_LOADED_MODELS: 2
+      OLLAMA_NUM_PARALLEL: 2
+      OLLAMA_LLM_MODELS: ${OLLAMA_LLM_MODELS}
+      OLLAMA_EMBED_MODELS: ${OLLAMA_EMBED_MODELS}
+    volumes:
+      - ./ollama:/root/.ollama
+      - ./ollama-init.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
+    deploy:
+      resources:
+        limits:
+          memory: 9g
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.1
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      TZ: ${TZ:-UTC}
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    volumes:
+      - ./qdrant/data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # Reranker — Hugging Face TEI serving bge-reranker-v2-m3 on CPU.
+  # ~1.2 GB model pulled on first start.
+  tei-reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.6
+    container_name: tei-reranker
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    command:
+      - "--model-id=${TEI_RERANKER_MODEL}"
+      - "--port=80"
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./tei-reranker/data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+
+  docling:
+    image: quay.io/ds4sd/docling-serve-cpu:v0.5.1
+    container_name: docling
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      TZ: ${TZ:-UTC}
+      DOCLING_SERVE_ENABLE_UI: "false"
+    volumes:
+      - ./docling/cache:/root/.cache
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # Langfuse v2 — RAG / LLM observability. Self-hosted, all data local.
+  # Pinned to v2 (vs v3) for the simpler single-app + Postgres stack; v3
+  # requires Clickhouse + Redis + MinIO which is overkill for this scale.
+  langfuse-db:
+    image: postgres:16.8-alpine
+    container_name: langfuse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${LANGFUSE_DB_USER}
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD}
+      POSTGRES_DB: ${LANGFUSE_DB_NAME}
+    volumes:
+      - ./postgresql/langfuse:/var/lib/postgresql/data
+      - ./postgresql/langfuse-parent:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d ${LANGFUSE_DB_NAME} -U ${LANGFUSE_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: langfuse
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      TZ: ${TZ:-UTC}
+      DATABASE_URL: postgresql://${LANGFUSE_DB_USER}:${LANGFUSE_DB_PASSWORD}@langfuse-db:5432/${LANGFUSE_DB_NAME}
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      SALT: ${LANGFUSE_SALT}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/api/public/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # Open WebUI — ChatGPT-like UI on top of Ollama. Talks to the ollama
+  # service over the internal docker network so no API key is involved.
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      TZ: ${TZ:-UTC}
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      ENABLE_SIGNUP: "true"           # first user becomes admin; later signups go pending
+      ENABLE_OLLAMA_API: "true"
+      ENABLE_OPENAI_API: "false"
+    volumes:
+      - ./open-webui:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s

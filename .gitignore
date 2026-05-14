@@ -1,0 +1,31 @@
+# Secrets
+.env
+*.key
+*.pem
+
+# Runtime state
+ollama/
+qdrant/data/
+tei-reranker/data/
+docling/cache/
+n8n/
+open-webui/
+postgresql/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

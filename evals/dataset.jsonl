@@ -1,0 +1,3 @@
+{"question": "What is the capital of Spain?", "ground_truth": "Madrid is the capital of Spain."}
+{"question": "Who wrote 'Don Quijote'?", "ground_truth": "Miguel de Cervantes wrote 'Don Quijote'."}
+{"question": "What is the speed of light in vacuum?", "ground_truth": "The speed of light in vacuum is approximately 299,792,458 metres per second."}

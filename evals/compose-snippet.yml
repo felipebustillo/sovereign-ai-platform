@@ -1,0 +1,24 @@
+# Append to the root docker-compose.yml when ready to run evals on cron / CI.
+# Kept out of the main compose so this image isn't built / pulled on every
+# deploy (it's only invoked on-demand via `docker compose run`).
+
+  rag-eval:
+    build:
+      context: ./evals
+      dockerfile: Dockerfile
+    container_name: rag-eval
+    profiles: ["eval"]   # only runs when --profile eval is passed
+    restart: "no"
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_LLM_MODEL: qwen2.5:7b-instruct-q4_K_M
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+    depends_on:
+      ollama:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
