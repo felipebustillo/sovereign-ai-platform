@@ -1,0 +1,4 @@
+# Runtime dependencies for the rag package (ingestion + query pipeline).
+# The eval harness pins its own, heavier deps in evals/Dockerfile.
+requests==2.32.3
+qdrant-client==1.13.2
