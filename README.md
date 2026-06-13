@@ -69,6 +69,31 @@ Web UIs:
 - n8n → `http://localhost:5678`
 - Langfuse → `http://localhost:3001`
 
+## RAG pipeline
+
+The retrieval + generation pipeline lives in the `rag/` package: embed the
+question with `bge-m3`, retrieve the top `RAG_RETRIEVE_K` chunks from Qdrant,
+rerank with TEI down to `RAG_RERANK_K`, then generate a grounded answer with the
+Ollama LLM. The same `run_pipeline()` powers both the CLI and the eval harness.
+
+```bash
+pip install -r requirements.txt
+
+# point at the stack (in-cluster service names are the defaults)
+export QDRANT_API_KEY=...                  # from your .env
+export OLLAMA_URL=http://localhost:11434
+export QDRANT_URL=http://localhost:6333
+export TEI_RERANKER_URL=http://localhost:8082
+
+python -m rag ingest corpus                # chunk + embed + upsert
+python -m rag query "What reranker does the platform use?"
+```
+
+Answers are grounded: when the corpus does not contain the answer, the pipeline
+replies *"I don't know based on the provided context"* instead of guessing. The
+reranker is an enhancement, not a hard dependency — if TEI is unreachable the
+pipeline degrades to vector-search order rather than failing the query.
+
 ## Usage from clients
 
 ### Ollama (OpenAI-compatible)
@@ -121,9 +146,26 @@ The reasoning is simple: any prompt or tool call that runs on this host should b
 
 ## Evals
 
-`evals/` contains a [RAGAS](https://github.com/explodinggradients/ragas)-based eval harness designed to be invoked on-demand (CI / cron / manual) once a real retrieval + generation pipeline is in place. It scores each question on four metrics (faithfulness, answer_relevancy, context_precision, context_recall) and can optionally push per-question scores to Langfuse so the trend is visible alongside production traces.
+`evals/` contains a [RAGAS](https://github.com/explodinggradients/ragas)-based harness that runs each golden question through `rag.pipeline.run_pipeline` and scores it on four metrics (faithfulness, answer relevancy, context precision, context recall), driven entirely by the local Ollama instance — no external API calls. Scores can optionally be pushed to Langfuse so the trend sits alongside production traces. See [`evals/README.md`](evals/README.md) for the full workflow.
 
-See [`evals/README.md`](evals/README.md) for the full workflow.
+### Results
+
+Initial run on a 5-question subset of the golden set, every component on a
+CPU-only host (`qwen2.5:3b-instruct-q4_K_M` as both generator and RAGAS judge,
+`bge-m3` embeddings, `bge-reranker-v2-m3` reranking), 2026-06-13:
+
+| Metric | Score |
+|---|---:|
+| Faithfulness | 0.71 |
+| Answer relevancy | 0.83 |
+| Context precision | 0.95 |
+| Context recall | 1.00 |
+
+Retrieval is strong (precision 0.95, recall 1.00); faithfulness and answer
+relevancy are bounded by the small CPU-resident generator. Reproduce with
+`docker compose --profile eval run --rm rag-eval`. Scaling the generator and
+judge to the 7B model lifts faithfulness and relevancy; the 9.6 GB host used here
+runs the 3B model to stay within memory.
 
 ## Customisation
 
@@ -139,11 +181,22 @@ See [`evals/README.md`](evals/README.md) for the full workflow.
 ├── docker-compose.yml      Service definitions
 ├── .env.example            Environment template (rotate every "change-me")
 ├── ollama-init.sh          Entrypoint that pulls models declared in env
+├── Makefile                install / test / ingest / query / eval shortcuts
+├── requirements.txt        Runtime deps for the rag package
+├── rag/                    RAG pipeline
+│   ├── ingest.py             Read corpus -> chunk -> embed -> upsert to Qdrant
+│   ├── pipeline.py           run_pipeline(): embed -> retrieve -> rerank -> generate
+│   ├── chunk.py              Pure, unit-tested text chunking
+│   ├── vector_store.py       Qdrant wrapper
+│   ├── rerank.py             TEI reranker (with graceful fallback)
+│   └── ollama_client.py      Ollama embeddings + chat
+├── corpus/                 Sample documents (the platform's own docs)
+├── tests/                  Unit tests (chunking, pipeline orchestration, rerank)
 ├── evals/
 │   ├── README.md
 │   ├── compose-snippet.yml   Drop-in snippet for the eval service
 │   ├── Dockerfile
-│   ├── eval_runner.py        Replace run_pipeline() with your real retriever+generator
+│   ├── eval_runner.py        Scores run_pipeline() output with RAGAS
 │   └── dataset.jsonl         Golden Q&A (one JSON per line)
 └── LICENSE
 ```
