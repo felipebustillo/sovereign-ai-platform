@@ -1,3 +1,14 @@
-{"question": "What is the capital of Spain?", "ground_truth": "Madrid is the capital of Spain."}
-{"question": "Who wrote 'Don Quijote'?", "ground_truth": "Miguel de Cervantes wrote 'Don Quijote'."}
-{"question": "What is the speed of light in vacuum?", "ground_truth": "The speed of light in vacuum is approximately 299,792,458 metres per second."}
+{"question": "What is the default large language model used for generation?", "ground_truth": "The default LLM is qwen2.5:7b-instruct-q4_K_M, served through Ollama."}
+{"question": "Which model produces the text embeddings?", "ground_truth": "Text embeddings are produced by the bge-m3 model, served through Ollama."}
+{"question": "What reranker model does the platform use and how is it served?", "ground_truth": "It uses the BAAI/bge-reranker-v2-m3 cross-encoder, served by a Hugging Face TEI container on port 8082."}
+{"question": "What vector database is used and on which ports is it exposed?", "ground_truth": "Qdrant is the vector database, exposed on port 6333 for REST and 6334 for gRPC."}
+{"question": "How does a query flow through the retrieval pipeline?", "ground_truth": "The question is embedded with bge-m3, Qdrant returns the top 50 candidate chunks, the TEI reranker keeps the best 5, those 5 chunks are put into a grounded prompt, and qwen2.5:7b generates the answer."}
+{"question": "What is the platform's core security principle?", "ground_truth": "Agent reasoning is separated from agent action: the inference host generates and transforms information but holds no credentials to change other systems."}
+{"question": "What credentials must the inference host not hold?", "ground_truth": "It must not hold SSH keys to other machines, source-control tokens with write scope, or cloud API keys beyond the inference scope. Pulling model weights from Hugging Face is the only allowed exception."}
+{"question": "How much total RAM do the default resource limits assume, and what is Ollama's memory cap?", "ground_truth": "The defaults assume a host with 16 GB of RAM, and Ollama is capped at 9 GB."}
+{"question": "Which environment variable is critical for n8n and why?", "ground_truth": "N8N_ENCRYPTION_KEY is critical because losing it means losing access to all credentials stored inside n8n."}
+{"question": "What framework is used for evaluation, and does it make external API calls?", "ground_truth": "Evaluation uses RAGAS, driven by the local Ollama instance, so it makes no external API calls."}
+{"question": "What are the four RAGAS metrics reported?", "ground_truth": "Faithfulness, answer relevancy, context precision, and context recall."}
+{"question": "How are PDFs parsed before they are embedded?", "ground_truth": "PDFs are parsed to Markdown by the Docling service on port 5001 before chunking and embedding."}
+{"question": "Is the stack GPU or CPU based by default?", "ground_truth": "The stack is CPU-only by design, though GPU acceleration can be enabled by adding a device reservation."}
+{"question": "How is the stack exposed publicly, if at all?", "ground_truth": "It is never exposed to the public internet directly; public access goes through a separate reverse-proxy host that terminates TLS."}
