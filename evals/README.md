@@ -4,11 +4,11 @@ Periodic, automatable quality checks for the RAG pipeline. Uses [RAGAS](https://
 
 Designed to be lightweight: a single Python container reads a golden dataset (`dataset.jsonl`), runs each question through the live pipeline, and scores the result on four RAGAS metrics. Output goes to stdout (for CI / cron logs) and optionally to Langfuse (`POST /api/public/scores`) so the trend is visible alongside production traces.
 
-## Wiring it up to your pipeline
+## How it wires to the pipeline
 
-The eval is pipeline-shaped, not pipeline-bound. `eval_runner.py` contains a `run_pipeline(question)` function that returns `(answer, contexts)`. Replace its stub body with your real retriever + generator, and you're scoring on day one.
+`eval_runner.py` calls `rag.pipeline.run_pipeline(question)` — the same retrieval + generation path used by the CLI and any application code. There is no separate eval-only pipeline to drift out of sync: the eval scores exactly what production serves. RAGAS itself is driven by the local Ollama instance (judge LLM + embeddings via `langchain-ollama`), so scoring makes no external API calls.
 
-This pattern lets you keep the eval harness in source control even before the retrieval+generation code is ready — useful for projects where the infrastructure is built first and the application later.
+On a single CPU host, keep `EVAL_MAX_WORKERS` at or below the model's parallel inference slots (`OLLAMA_NUM_PARALLEL`) — RAGAS' default 16 workers drown a quantized CPU model and surface as `TimeoutError`. Use `EVAL_LIMIT` to score a faster subset and `RAGAS_JUDGE_MODEL` to pick a lighter judge.
 
 ## Files
 
@@ -16,7 +16,7 @@ This pattern lets you keep the eval harness in source control even before the re
 |---|---|
 | `dataset.jsonl` | Golden Q&A — one JSON object per line: `{question, ground_truth, contexts?}`. Start with 20-50 examples, grow over time. |
 | `eval_runner.py` | Loads the dataset, runs the pipeline for each question, scores via RAGAS, prints a summary, optionally pushes per-question scores to Langfuse. |
-| `Dockerfile` | Pins the Python deps (ragas, langfuse, ollama-python, qdrant-client). |
+| `Dockerfile` | Pins the Python deps (ragas, datasets, langchain-ollama, qdrant-client) and copies the `rag/` package into the image. |
 | `compose-snippet.yml` | The service entry to drop into the root `docker-compose.yml` once the eval is live (kept here, not in main compose, so it doesn't run as a long-lived container — invoke on-demand with `docker compose run --rm rag-eval`). |
 
 ## Metrics (RAGAS defaults)
@@ -31,8 +31,8 @@ A regression on any of these in CI is a strong signal that something (retriever 
 ## How to run
 
 ```bash
-cd evals
-docker compose run --rm rag-eval
+# from the repo root, with the stack already up
+docker compose --profile eval run --rm rag-eval
 ```
 
 For a cron job (e.g. nightly, results to Langfuse):
